@@ -2,3 +2,4 @@ data/*
 venv/
 .DS_Store
 cnzr.egg-info/
+cnzr/__pycache__/

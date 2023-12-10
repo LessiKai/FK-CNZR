@@ -2,16 +2,29 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from auxiliary import validate_data
+import pickle
 
+
+CANCER_TYPES = {
+    "tcga-kich": 0,
+    "tcga-kirc": 1,
+    "tcga-kirp": 2,
+}
 
 
 def load_data():
-
     data_dir    = Path("./data").resolve()
+    preprocessed_file = data_dir / "preprocessed.pkl"
+    if preprocessed_file.exists():
+        print("Loading preprocessed data...")
+        with open(preprocessed_file, "rb") as f:
+            x, y = pickle.load(f)
+            return x, y
+
     cancer_dirs = [d for d in data_dir.iterdir() if d.is_dir()]
     print(f"Cancer class dirs: {', '.join([str(d) for d in cancer_dirs])}")
 
-    cancer_dict    = dict()
+    cancer_dict = dict()
 
     # CANCER LEVEL
     for cancer_dir in cancer_dirs:
@@ -34,24 +47,36 @@ def load_data():
             case_data = case_data[case_data['gene_type'].str.contains('protein_coding')]
             case_data = case_data.drop(labels = case_data.columns[[1]], axis="columns")
 
-            # Füge Krebstyp und Case Feature hinzu 
-            case_data = case_data.T
-            case_data = case_data.reset_index()
-            case_data = case_data.drop(labels = case_data.columns[[0]], axis="columns")
-            case_data.columns = case_data.iloc[0]
-            case_data.insert(0, "Cancer", cancer_dir.name)
-            case_data.insert(0, "Case", case_dir.name)
-            case_data = case_data.drop(index = 0)
-            case_dict  = {case_dir.name: np.delete(case_data.values, 0)}
+            x = case_data["tpm_unstranded"].to_numpy()
+            y = np.full(x.shape, cancer_dir.name)
+            cancer_dict[case_dir.name] = {
+                "x": x,
+                "y": y
+            }
 
-            cancer_dict.update(case_dict)
+    n_cases = len(cancer_dict)
+    n_genes = cancer_dict[next(iter(cancer_dict))]["x"].shape[0]
+
+    x = np.zeros((n_cases, n_genes))
+    y = np.zeros(n_cases)
+
+    for i, (case_name, case_data) in enumerate(cancer_dict.items()):
+        x[i] = case_data["x"]
+        y[i] = CANCER_TYPES[case_data["y"].astype(str)[0]]
 
     print(f"Length of Cancer Dictionary: {len(cancer_dict)}. Dataset Ready. \n")
-    return cancer_dict
-            
 
+    # save dict
+    with open(data_dir / "preprocessed.pkl", "wb") as f:
+        pickle.dump((x, y), f)
+
+    return x, y
 
 
 if __name__ == "__main__":
     #validate_data()
-    load_data()
+    x, y = load_data()
+    print(x.shape)
+    print(y.shape)
+
+

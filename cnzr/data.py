@@ -3,14 +3,21 @@ import numpy as np
 from pathlib import Path
 from auxiliary import validate_data
 import pickle
+import torch
+
+
 
 
 CANCER_TYPES = {
+    # Übersetzung
     "tcga-kich": 0,
     "tcga-kirc": 1,
     "tcga-kirp": 2,
 }
 
+def data_split(x, y, random_seed):
+
+    return x_train, y_train, x_test, y_test
 
 def load_data():
     data_dir    = Path("./data").resolve()
@@ -78,5 +85,8 @@ if __name__ == "__main__":
     x, y = load_data()
     print(x.shape)
     print(y.shape)
+
+    random_seed = 0
+    #x_train, y_train, x_test, y_test = data_split(x, y, random_seed)  
 
 

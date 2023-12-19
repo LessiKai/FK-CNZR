@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import pickle
-
+import time
 
 
 
@@ -83,7 +83,6 @@ if __name__ == "__main__":
         y_t[idx][int(value)] = 1
     y = y_t
     del y_t
-    print(f"Shape y transformed = {y.shape}")
 
     #Train Test Split
     random_seed = 42
@@ -93,11 +92,14 @@ if __name__ == "__main__":
     y_train = y[range(1, idx)]
     x_test  = x[range(idx+1, len(x))]
     y_test  = y[range(idx+1, len(y))]
-   
+    
+    # Model
+     
+    start_time = time.time()
     NN          = ModelV1(np.shape(x)[1], len(CANCER_TYPES) )
     Classifier  = train_model(x_train, y_train, NN, n_classes= len(CANCER_TYPES))
     test_model(x_test, y_test, Classifier)
+    end_time = time.time()
+    print(f"Elapsed time: {(end_time - start_time)/ 60} minutes")
 
 
-
- 

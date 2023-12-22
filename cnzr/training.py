@@ -3,9 +3,12 @@ import torch
 import torch.optim as optim
 import torch.utils.data
 import numpy as np
+import tensorflow as tf
+from torch.utils.tensorboard import SummaryWriter
 from random import randint
 from colorama import Fore, Back, Style
 from torch import nn
+
 
 
 
@@ -30,75 +33,29 @@ class ModelV1(nn.Module):
 
 
 
-def shuffle_indices(batch_indices, n_batches, N):
-    # Ein Array mit vielen einsen. dann Auswahl von x random Elementen, setze dann skalar auf 0
-    indice_server = np.zeros(N)
-    for batch, arrays in enumerate(batch_indices):
-        for index_pointer, array in enumerate(batch_indices[batch]):
-            while batch_indices[batch][index_pointer] == 0:
-                # solange noch kein Wert zugewiesen wurde.
-                new_index = randint(1, N)
-                if indice_server[new_index-1] == 0:
-                    # Indize Werte + 1, damit 0 marker für unbelegt bleiben kann. Spätere Reudktion.
-                    batch_indices[batch][index_pointer] = new_index  
-                    indice_server[new_index-1] = 1
-    # wieder um eins reduzieren
-    for batch, arrays in enumerate(batch_indices):
-        for index_pointer, array in enumerate(batch_indices[batch]):
-            while batch_indices[batch][index_pointer] == 0:
-                batch_indices[batch][index_pointer] -= 1 
-    return batch_indices
-        
-
-
-def assign_batches(batches, batch_indices, data):
-    """langsamer Prozess: optimierbar"""
-    feature_depth = data.shape[1]
-    for batch, arrays in enumerate(batch_indices):
-        for observation_index, array in enumerate(batch_indices[batch]):
-            for feature in range(feature_depth):
-                batches[batch][observation_index][feature] = data[observation_index][feature]
-                assert (isinstance(batches[batch][observation_index][feature], np.float64)), f"Falscher Datentyp mit {datentyp}"
-    return batches
-
-
-def train_model(x, y, model, n_classes, print_debug = True):
-    """Neu: In jeder Epoche werden die Batches Random gemacht"""
-    # Controll Variables for the NN
-    epochs              = 20
-    batch_size          = 20
-    learning_rate       = 0.0002
+def train_model(x, y, model, n_classes, print_debug = True, epochs = 50, learning_rate = 0.00003, batch_size = 16, seed_nn = 0 ):
+    
+    print(f"Modelparameter: lr= {learning_rate}, batch_size = {batch_size}.")
     if(batch_size>len(x)/2): batch_size = len(x)
 
     # Data Preprocessing
-    ## Sample X-y into Batches
-    x = x[0:len(x) -len(x) % batch_size]        # Arraytrunkierung des Rests (Vereinfacht Algorithmus)
-    y = y[0:len(y) -len(y) % batch_size]
+    x = torch.tensor(x[0:len(x) -len(x) % batch_size], dtype=torch.float32)        # Arraytrunkierung des Rests (Vereinfacht Algorithmus)
+    y = torch.tensor(y[0:len(y) -len(y) % batch_size], dtype=torch.float32)
     n_batches = int(len(x) / batch_size)
-    if(print_debug == True): print(f"Length X = {len(x)}")
-    batch_indices = np.zeros((n_batches, batch_size))
-
-    ## Sample X-y into Batches
-    x_batches = np.zeros((n_batches, batch_size, x.shape[1]))
-    y_batches = np.zeros((n_batches, batch_size, y.shape[1]))
-    print(f"Batch Indexing...")
-    ## TENSOR Konstruktion für NN
-    batch_indices = shuffle_indices(batch_indices, n_batches, len(x))
-    print(f"x Batch Assignment by Indices...")
-    x_batches = assign_batches(x_batches, batch_indices, x)
-    print(x_batches.shape)
-    print(f"y Batch Assignment by Indices...")
-    y_batches = assign_batches(y_batches, batch_indices, y)
-    x_batches_tensor = torch.tensor(x_batches, dtype=torch.float)
-    y_batches_tensor = torch.tensor(y_batches, dtype=torch.float)
-
     
-    # Model Training
+    N = len(x)
+    inds = np.arange(0, N, 1)
+    
     print(f"\n→ Initiating Modeltraining. Total Epochs: {epochs}")
-    epoch_print = 0
+
+    # Setup
     loss_fn = nn.CrossEntropyLoss() # Setup Loss Function
-    torch.manual_seed(42)
+    torch.manual_seed(seed_nn)
     optim   = torch.optim.Adam(model.parameters(), lr=learning_rate)     # Setup optimizer
+    model.train()
+
+    writer = SummaryWriter()
+
     for epoch in range(epochs):  
         if epoch == 0 or epochs < 10: 
             print_command = True
@@ -107,25 +64,36 @@ def train_model(x, y, model, n_classes, print_debug = True):
                 print_command = True
             else:
                 print_command = False
-        if print_command: print(f"{"↺": ^2} | Epoch: {epoch: ^4}     Advanced {int(epoch/epochs*100): ^4}%     ", end='')
-              
-        ## Sample X-y into Batches
-        batch_indices = shuffle_indices(batch_indices, n_batches, len(x))
-        x_batches_tensor = torch.tensor(assign_batches(x_batches, batch_indices, x), dtype=torch.float)
-        y_batches_tensor = torch.tensor(assign_batches(y_batches, batch_indices, y), dtype=torch.float)
-        model.train()
-        for idx, x_batch in enumerate(x_batches_tensor):
-            y_batch = y_batches_tensor[idx]
-            y_pred  = model(x_batch)
-            loss    = loss_fn(y_pred, y_batch)
+        if print_command: print(f"{'↪': ^2} | Epoch: {epoch: ^4}     Advanced {int(epoch/epochs*100): ^4}%     ", end='')
+        
+        np.random.shuffle(inds)
+        x_batches, y_batches = np.split(x, n_batches), np.split(y, n_batches)
+        
+        for i in range(n_batches):
+            batch_inds = inds[i *batch_size: (i+1) *batch_size -1 ]
+            loss    = loss_fn(model(x[batch_inds]), y[batch_inds])
+            optim.zero_grad()
             loss.backward()
             optim.step()
-            optim.zero_grad()
+
         if print_command: 
-            y_pred = model(x_batches_tensor[0])
-            print(f"Batch[0] avg. loss: {loss_fn(y_pred, y_batches_tensor[0]):.4f}     ")
+            batch_inds = inds[0: 3*batch_size -1 ]
+            y_pred = model(x[batch_inds])
+            loss = loss_fn(y_pred, y[batch_inds])
+            
+            hit_arr = np.zeros((len(batch_inds), y.shape[1]))
+            for obs in range(len(batch_inds)):
+                if torch.argmax(y_pred[obs]) == np.argmax(y[obs]):
+                    hit_arr[obs][torch.argmax(y_pred[obs])] = 1
+            hits = np.sum(hit_arr == 1)
+            accuracy = hits/len(batch_inds)
+            print(f"Batch[0] avg. loss: {loss:.4f}")
+            writer.add_scalar('charts/train_loss', loss, epoch)
+            writer.add_scalar('charts/train_acc', accuracy, epoch)
+
+
     
-    
+    writer.close()
     print("Model has been Trained 💪")
     return model
     
@@ -134,16 +102,37 @@ def train_model(x, y, model, n_classes, print_debug = True):
 
 def test_model(x, y, model):
     model.eval()
+
+    y_pred = model(torch.tensor(x, dtype=torch.float))
+    
+    hit_arr = np.zeros((len(x), y.shape[1]))
+    for obs in range(len(x)):
+        if torch.argmax(y_pred[obs]) == np.argmax(y[obs]):
+            hit_arr[obs][torch.argmax(y_pred[obs])] = 1
+
+    hits = np.sum(hit_arr == 1)
+    accuracy = hits/len(x)
+
+
     y_pred = model(torch.tensor(x[0:10], dtype=torch.float))
-    print(f"{"y": ^15} {"y_pred": ^15}")
+    # Ausgabe
+    print(f"{'y': ^15} {'y_pred': ^15}")
     for i,data in enumerate(y_pred):
-        if str(y[0:10][i].tolist()) == str(torch.round(y_pred[i]).tolist()):
-            print(f"{Fore.GREEN}{str(y[0:10][i].tolist()): ^13} {str(torch.round(y_pred[i]).tolist()): ^13}")
+        if str(np.argmax(y[i].tolist())) == str(np.argmax(y_pred[i].tolist())):
+            print(f"{Fore.GREEN}{str(y[i].tolist()): ^13} {str(torch.round(y_pred[i]).tolist()): ^13}", end="")
+            print(Fore.RESET)
         else: 
-            print(f"{Fore.RED}{str(y[0:10][i].tolist()): ^13} {str(torch.round(y_pred[i]).tolist()): ^13}", end="")
+            print(f"{Fore.RED}{str(y[i].tolist()): ^13} {str(torch.round(y_pred[i]).tolist()): ^13}", end="")
             print(Fore.RESET)
 
-    # 1-1, 1-0, 0-1, 0-0
-    # Right Trues, Right False, Wrong Trues, 
+    print(f"{'Treffercounts': ^47}")
+    print(f"{'C1': ^14} {'C2': ^14} {'C3': ^14}")
+    print(f"{np.sum(hit_arr.T[0] == 1): ^13}   {np.sum(hit_arr.T[1] == 1): ^13}   {np.sum(hit_arr.T[2] == 1): ^13}   - Treffer")
+    print(f"{int(np.sum(hit_arr.T[0] == 1)/hits): ^13}   {int(np.sum(hit_arr.T[1] == 1)/hits*100): ^13}   {int(np.sum(hit_arr.T[2] == 1)/hits*100): ^13}   - Trefferanteil")
+    print()
+    print(f"{int(np.sum(y.T[0] == 1)/len(x)*100): ^13}   {int(np.sum(y.T[1] == 1)/len(x)*100): ^13}   {int(np.sum(y.T[2] == 1)/len(x)*100): ^13}   - Klassenanteil")
+    
+    print(f"▶ Auswertung abgeschlossen. Von {len(x)} Klassen wurden {hits} richtig erkannt. Die Genauigkeit beträgt {accuracy*100:.2f} %.")
 
+    # tensorboard --logdir='runs'
     return

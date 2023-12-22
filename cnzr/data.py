@@ -94,12 +94,10 @@ if __name__ == "__main__":
     y_test  = y[range(idx+1, len(y))]
     
     # Model
-     
     start_time = time.time()
+    
     NN          = ModelV1(np.shape(x)[1], len(CANCER_TYPES) )
     Classifier  = train_model(x_train, y_train, NN, n_classes= len(CANCER_TYPES))
     test_model(x_test, y_test, Classifier)
     end_time = time.time()
     print(f"Elapsed time: {(end_time - start_time)/ 60} minutes")
-
-

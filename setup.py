@@ -13,6 +13,7 @@ setuptools.setup(
         "torch",
         "seaborn",
         "pandas",
-        "pathlib"
+        "pathlib",
+        "tensorflow"
     ]
 )

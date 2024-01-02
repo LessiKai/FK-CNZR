@@ -8,6 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from random import randint
 from colorama import Fore, Back, Style
 from torch import nn
+from pathlib import Path
 
 
 
@@ -19,11 +20,9 @@ class ModelV1(nn.Module):
         self.network = nn.Sequential(
             nn.Linear(in_features, 128),
             nn.Tanh(),
-            nn.Linear(128, 64),
+            nn.Linear(128, 128),
             nn.Tanh(),
-            nn.Linear(64, 32),
-            nn.Tanh(),
-            nn.Linear(32, out_features),
+            nn.Linear(128, out_features),
         )
 
     def forward(self, x):
@@ -33,7 +32,16 @@ class ModelV1(nn.Module):
 
 
 
-def train_model(x, y, model, n_classes, print_debug = True, epochs = 50, learning_rate = 0.00003, batch_size = 16, seed_nn = 0 ):
+def train_model(x, y, model, n_classes, print_debug = True, epochs = 200, learning_rate = 0.0001618243, batch_size = 32, seed_nn = 0 ):
+    
+    # Gewichtung berücksichtigen
+    cancer_type, cancer_count = np.unique(y, return_counts= True)
+    sorted_inds = np.argsort(cancer_type)
+    cancer_count = cancer_count[sorted_inds]
+    cancer_type = cancer_type[sorted_inds]
+    cancer_loss_weights = 1 / cancer_count
+    cancer_loss_weights = cancer_loss_weights / np.sum(cancer_loss_weights)
+    print(cancer_loss_weights)
     
     print(f"Modelparameter: lr= {learning_rate}, batch_size = {batch_size}.")
     if(batch_size>len(x)/2): batch_size = len(x)
@@ -71,7 +79,9 @@ def train_model(x, y, model, n_classes, print_debug = True, epochs = 50, learnin
         
         for i in range(n_batches):
             batch_inds = inds[i *batch_size: (i+1) *batch_size -1 ]
-            loss    = loss_fn(model(x[batch_inds]), y[batch_inds])
+            prob = model(x[batch_inds])
+            loss    = loss_fn(prob, y[batch_inds])
+                                   
             optim.zero_grad()
             loss.backward()
             optim.step()
@@ -91,8 +101,6 @@ def train_model(x, y, model, n_classes, print_debug = True, epochs = 50, learnin
             writer.add_scalar('charts/train_loss', loss, epoch)
             writer.add_scalar('charts/train_acc', accuracy, epoch)
 
-
-    
     writer.close()
     print("Model has been Trained 💪")
     return model
@@ -101,38 +109,33 @@ def train_model(x, y, model, n_classes, print_debug = True, epochs = 50, learnin
 
 
 def test_model(x, y, model):
+    
     model.eval()
+    writer = SummaryWriter()
+    run_dir    = Path("./runs").resolve()
+    run = len([d for d in run_dir.iterdir()])
 
     y_pred = model(torch.tensor(x, dtype=torch.float))
     
+    #accuracy
     hit_arr = np.zeros((len(x), y.shape[1]))
     for obs in range(len(x)):
         if torch.argmax(y_pred[obs]) == np.argmax(y[obs]):
             hit_arr[obs][torch.argmax(y_pred[obs])] = 1
-
     hits = np.sum(hit_arr == 1)
     accuracy = hits/len(x)
 
-
     y_pred = model(torch.tensor(x[0:10], dtype=torch.float))
-    # Ausgabe
-    print(f"{'y': ^15} {'y_pred': ^15}")
-    for i,data in enumerate(y_pred):
-        if str(np.argmax(y[i].tolist())) == str(np.argmax(y_pred[i].tolist())):
-            print(f"{Fore.GREEN}{str(y[i].tolist()): ^13} {str(torch.round(y_pred[i]).tolist()): ^13}", end="")
-            print(Fore.RESET)
-        else: 
-            print(f"{Fore.RED}{str(y[i].tolist()): ^13} {str(torch.round(y_pred[i]).tolist()): ^13}", end="")
-            print(Fore.RESET)
-
     print(f"{'Treffercounts': ^47}")
     print(f"{'C1': ^14} {'C2': ^14} {'C3': ^14}")
     print(f"{np.sum(hit_arr.T[0] == 1): ^13}   {np.sum(hit_arr.T[1] == 1): ^13}   {np.sum(hit_arr.T[2] == 1): ^13}   - Treffer")
     print(f"{int(np.sum(hit_arr.T[0] == 1)/hits): ^13}   {int(np.sum(hit_arr.T[1] == 1)/hits*100): ^13}   {int(np.sum(hit_arr.T[2] == 1)/hits*100): ^13}   - Trefferanteil")
     print()
-    print(f"{int(np.sum(y.T[0] == 1)/len(x)*100): ^13}   {int(np.sum(y.T[1] == 1)/len(x)*100): ^13}   {int(np.sum(y.T[2] == 1)/len(x)*100): ^13}   - Klassenanteil")
+    print(f"{int(np.sum(y.T[0] == 1)/len(x)*100): ^13}   {int(np.sum(y.T[1] == 1)/len(x)*100): ^13}   {int(np.sum(y.T[2] == 1)/len(x)*100): ^13}   - Klassenanteil im Testset")
     
+    writer.add_scalar('charts/test_acc', accuracy, run)
     print(f"▶ Auswertung abgeschlossen. Von {len(x)} Klassen wurden {hits} richtig erkannt. Die Genauigkeit beträgt {accuracy*100:.2f} %.")
+    writer.close()
 
     # tensorboard --logdir='runs'
     return

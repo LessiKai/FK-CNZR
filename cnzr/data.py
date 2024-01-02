@@ -31,6 +31,7 @@ def load_data():
     cancer_dirs = [d for d in data_dir.iterdir() if d.is_dir()]
     print(f"Cancer class dirs: {', '.join([str(d) for d in cancer_dirs])}")
 
+
     # CANCER LEVEL
     for cancer_dir in cancer_dirs:
         print(f"\nLoading data from {cancer_dir}")
@@ -95,7 +96,6 @@ if __name__ == "__main__":
     
     # Model
     start_time = time.time()
-    
     NN          = ModelV1(np.shape(x)[1], len(CANCER_TYPES) )
     Classifier  = train_model(x_train, y_train, NN, n_classes= len(CANCER_TYPES))
     test_model(x_test, y_test, Classifier)

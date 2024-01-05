@@ -13,6 +13,12 @@ setuptools.setup(
         "torch",
         "seaborn",
         "pandas",
-        "pathlib"
+        "pathlib",
+        "colorama",
+        "scikit-learn",
+        "hydra-core",
+        "tqdm",
+        "tensorboard",
+        "hydra-submitit-launcher"
     ]
 )

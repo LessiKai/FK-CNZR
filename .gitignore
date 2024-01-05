@@ -3,3 +3,5 @@ venv/
 .DS_Store
 cnzr.egg-info/
 cnzr/__pycache__/
+.idea/
+experiments/logs/

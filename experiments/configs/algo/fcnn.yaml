@@ -1,0 +1,7 @@
+name: fcnn
+epochs: 50
+batch_size: 32
+learning_rate: 0.00016182431673858122
+hidden_size: 128
+num_hidden: 1
+dropout: 0.2962817772387005

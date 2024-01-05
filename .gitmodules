@@ -1,0 +1,3 @@
+[submodule "how-to-autorl"]
+	path = how-to-autorl
+	url = https://github.com/facebookresearch/how-to-autorl.git

@@ -1,0 +1,19 @@
+# @package _global_
+defaults:
+  - override /hydra/sweeper: DEHB
+
+hydra:
+  sweeper:
+    dehb_kwargs:
+      mutation_factor: 0.2
+      max_budget: 200
+      min_budget: 2
+      deepcave: true
+      #seeds: [977175445, 1783404260, 1355015111, 1871386675, 2060488456, 744292000, 1559275036, 719027173, 1183038961, 2082594662]
+    search_space: ${search_space}
+    total_brackets: 3
+    budget_variable: algo.epochs
+  run:
+    dir: ./logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ./logs/${now:%Y-%m-%d}/${now:%H-%M-%S}

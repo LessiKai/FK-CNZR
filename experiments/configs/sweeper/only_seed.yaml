@@ -1,0 +1,9 @@
+# @package _global_
+hydra:
+  sweeper:
+    params:
+      seed: 1448406585,  304770174,  170414307,  562354047, 1085459256, 1036488152,  481241758, 1117173877, 1897798637, 1449774588
+  run:
+    dir: ./logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ./logs/${now:%Y-%m-%d}/${now:%H-%M-%S}

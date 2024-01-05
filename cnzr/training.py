@@ -1,25 +1,32 @@
-
 import torch
-import torch.optim as optim
+from torch import optim
 import torch.utils.data
 import numpy as np
-from colorama import Fore, Back, Style
 from torch import nn
+from tqdm import tqdm
+from typing import Union
+from os import PathLike
+from pathlib import Path
+from torch.utils.tensorboard import SummaryWriter
+import logging
+from cnzr.util import seed_everything
+from cnzr.data import get_cancer_type_by_id
 
-
-
-class ModelV1(nn.Module):
-    def __init__(self, in_features: int, out_features: int):
+class FCNN(nn.Module):
+    def __init__(self, in_features: int, out_features: int, hidden_size: int = 128, num_hidden: int = 3, dropout: float = 0.5):
         super().__init__()
 
         self.network = nn.Sequential(
-            nn.Linear(in_features, 128),
-            nn.Tanh(),
-            nn.Linear(128, 64),
-            nn.Tanh(),
-            nn.Linear(64, 32),
-            nn.Tanh(),
-            nn.Linear(32, out_features),
+            nn.Linear(in_features, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(),
+            *[nn.Sequential(
+                nn.Linear(hidden_size, hidden_size),
+                nn.BatchNorm1d(hidden_size),
+                nn.ReLU(),
+            ) for _ in range(num_hidden)],
+            nn.Dropout1d(dropout),
+            nn.Linear(hidden_size, out_features),
         )
 
     def forward(self, x):
@@ -28,73 +35,81 @@ class ModelV1(nn.Module):
         return x
 
 
-
-def train_model(x, y, model, n_classes, print_debug = True):
-    # Controll Variables for the NN
-    epochs              = 100
-    elements_per_batch  = 20
-    learning_rate       = 0.00005
-    if(elements_per_batch>len(x)/2): elements_per_batch = len(x)
-
-    # Data Preprocessing
-    ## Sample X-y into Batches
-    x = x[0:len(x) -len(x) % elements_per_batch]        # Arraytrunkierung des Rests (Vereinfacht Algorithmus)
-    y = y[0:len(y) -len(y) % elements_per_batch]
-    n_batches = int(len(x) / elements_per_batch)
-    if(print_debug == True): print(f"Length X = {len(x)}")
-
-    ## TENSOR Konstruktion für NN
-    x_batches = torch.tensor(np.split(x             , n_batches), dtype=torch.float32)
-    y_batches = torch.tensor(np.split(y , n_batches))
-    
-    # Model Training
-    print(f"\n→ Initiating Modeltraining. Total Epochs: {epochs}")
-    
-    epoch_print = 0
-    loss_fn = nn.CrossEntropyLoss() # Setup Loss Function
-
-    torch.manual_seed(42)
-    for epoch in range(epochs):  
-        if epoch == 0 or epochs < 10: 
-            print_command = True
-        else: 
-            if (epoch % (epochs/20) == 0): 
-                print_command = True
-            else:
-                print_command = False
-        if print_command: print(f"{"↺": ^2} | Epoch: {epoch: ^4}     Advanced {int(epoch/epochs*100): ^4}%     ", end='')
-        
-        model.train()
-        for idx, x_batch in enumerate(x_batches):
-            y_batch = y_batches[idx]
-            y_pred  = model(x_batch)
-            optim   = torch.optim.Adam(model.parameters(), lr=learning_rate)     # Setup optimizer
-            loss    = loss_fn(y_pred, y_batch)
-            loss.backward()
-            optim.step()
-            optim.zero_grad()
-        if print_command: 
-            y_pred = model(x_batches[0])
-            print(f"Batch[0] avg. loss: {loss_fn(y_pred, y_batches[0]):.4f}     ")
-    
-        
-    print("Model has been Trained 💪")
-    return model
-    
-
-
-def test_model(x, y, model):
+def calculate_accuracy(model: nn.Module, x: torch.Tensor, y: torch.Tensor, batch_size: int) -> (float, np.ndarray):
     model.eval()
-    y_pred = model(torch.tensor(x[0:10], dtype=torch.float32))
-    print(f"{"y": ^15} {"y_pred": ^15}")
-    for i,data in enumerate(y_pred):
-        if str(y[0:10][i].tolist()) == str(torch.round(y_pred[i]).tolist()):
-            print(f"{Fore.GREEN}{str(y[0:10][i].tolist()): ^13} {str(torch.round(y_pred[i]).tolist()): ^13}")
-        else: 
-            print(f"{Fore.RED}{str(y[0:10][i].tolist()): ^13} {str(torch.round(y_pred[i]).tolist()): ^13}", end="")
-            print(Fore.RESET)
+    inds = np.arange(len(x))
+    correct_predictions = 0
+    correct_predictions_per_type = torch.zeros(y.shape[1])
+    with torch.no_grad():
+        for b_begin in range(0, len(x), batch_size):
+            b_end = min(b_begin + batch_size, len(x))
+            b_inds = inds[b_begin:b_end]
+            prob = model(x[b_inds])
+            pred = torch.argmax(prob, dim=1)
+            correct_predictions += torch.sum(pred == torch.argmax(y[b_inds], dim=1)).item()
+            for i in range(y.shape[1]):
+                correct_predictions_per_type[i] += torch.sum(pred[y[b_inds][:, i] == 1] == torch.argmax(y[b_inds][y[b_inds][:, i] == 1], dim=1)).item()
+    return correct_predictions / len(x), correct_predictions_per_type / torch.sum(y, dim=0)
 
-    # 1-1, 1-0, 0-1, 0-0
-    # Right Trues, Right False, Wrong Trues, 
+def train_model(x: np.ndarray, y: np.ndarray,
+                x_test: np.ndarray, y_test: np.ndarray,
+                model: nn.Module,
+                sample_loss_weights: np.ndarray,
+                epochs: int,
+                batch_size: int,
+                learning_rate: float,
+                seed: int,
+                log_dir: Union[str, PathLike]) -> nn.Module:
+    log_dir = log_dir if isinstance(log_dir, Path) else Path(log_dir)
+    writer = SummaryWriter(log_dir)
 
-    return
+    seed_everything(seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    x = torch.tensor(x, dtype=torch.float32).to(device)
+    y = torch.tensor(y, dtype=torch.float32).to(device)
+    x_test = torch.tensor(x_test, dtype=torch.float32).to(device)
+    y_test = torch.tensor(y_test, dtype=torch.float32).to(device)
+    sample_loss_weights = torch.tensor(sample_loss_weights, dtype=torch.float32).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, eps=1e-5)
+    loss_fn = nn.CrossEntropyLoss()
+
+    model.train()
+    global_step = 0
+    for _ in tqdm(range(epochs), desc="Train epochs"):
+        inds = np.arange(len(x))
+        np.random.shuffle(inds)
+
+        for b_begin in range(0, len(x), batch_size):
+            b_end = min(b_begin + batch_size, len(x))
+            b_inds = inds[b_begin:b_end]
+            global_step += b_end-b_begin
+
+            prob = model(x[b_inds])
+            loss = loss_fn(prob, y[b_inds])
+            loss = torch.sum(loss * sample_loss_weights[torch.argmax(y[b_inds], dim=1)]) / len(b_inds)
+
+            with torch.no_grad():
+                pred = torch.argmax(prob, dim=1)
+                acc = torch.sum(pred == torch.argmax(y[b_inds], dim=1)) / len(b_inds)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            writer.add_scalar("charts/train_loss", loss.item(), global_step)
+            writer.add_scalar("charts/train_acc", acc.item(), global_step)
+
+    logging.info("Model has been Trained 💪")
+    torch.save(model.state_dict(), log_dir / "model.pt")
+    torch.save(optimizer.state_dict(), log_dir / "optimizer.pt")
+
+    final_train_acc, _ = calculate_accuracy(model, x, y, batch_size)
+    test_acc, test_type_acc = calculate_accuracy(model, x_test, y_test, batch_size)
+    writer.add_scalar("charts/final_train_acc", final_train_acc, global_step)
+    writer.add_scalar("charts/test_acc", test_acc, global_step)
+    for i, acc in enumerate(test_type_acc):
+        writer.add_scalar(f"charts/test_acc_{get_cancer_type_by_id(i)}", acc, global_step)
+
+    writer.close()
+    return model, test_acc

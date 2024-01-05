@@ -1,0 +1,11 @@
+defaults:
+  - algo: fcnn
+  - launcher: local
+  - search_space: fcnn
+  - sweeper: only_seed
+  - _self_
+
+seed: ???
+test_size: 0.15
+val_size: 0.15
+use_val: true

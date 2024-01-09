@@ -51,6 +51,23 @@ def calculate_accuracy(model: nn.Module, x: torch.Tensor, y: torch.Tensor, batch
                 correct_predictions_per_type[i] += torch.sum(pred[y[b_inds][:, i] == 1] == torch.argmax(y[b_inds][y[b_inds][:, i] == 1], dim=1)).item()
     return correct_predictions / len(x), correct_predictions_per_type / torch.sum(y, dim=0)
 
+
+def calculate_confusion_matrix(model: nn.Module, x: torch.Tensor, y: torch.Tensor, batch_size: int) -> np.ndarray:
+    model.eval()
+    inds = np.arange(len(x))
+    confusion_matrix = np.zeros((y.shape[1], y.shape[1]))
+    with torch.no_grad():
+        for b_begin in range(0, len(x), batch_size):
+            b_end = min(b_begin + batch_size, len(x))
+            b_inds = inds[b_begin:b_end]
+            prob = model(x[b_inds])
+            pred = torch.argmax(prob, dim=1)
+            for i in range(y.shape[1]):
+                for j in range(y.shape[1]):
+                    confusion_matrix[i, j] += torch.sum((pred == j) & (y[b_inds][:, i] == 1)).item()
+    return confusion_matrix
+
+
 def train_model(x: np.ndarray, y: np.ndarray,
                 x_test: np.ndarray, y_test: np.ndarray,
                 model: nn.Module,
@@ -107,9 +124,15 @@ def train_model(x: np.ndarray, y: np.ndarray,
     final_train_acc, _ = calculate_accuracy(model, x, y, batch_size)
     test_acc, test_type_acc = calculate_accuracy(model, x_test, y_test, batch_size)
     writer.add_scalar("charts/final_train_acc", final_train_acc, global_step)
-    writer.add_scalar("charts/test_acc", test_acc, global_step)
+    writer.add_scalar("charts/test_acc", test_acc, 0)
     for i, acc in enumerate(test_type_acc):
-        writer.add_scalar(f"charts/test_acc_{get_cancer_type_by_id(i)}", acc, global_step)
+        writer.add_scalar(f"charts/test_acc_{get_cancer_type_by_id(i)}", acc, 0)
+
+    test_confusion_matrix = calculate_confusion_matrix(model, x_test, y_test, batch_size)
+    for i in range(test_confusion_matrix.shape[0]):
+        for j in range(test_confusion_matrix.shape[1]):
+            writer.add_scalar(f"confusion_matrix/{get_cancer_type_by_id(i)}/{get_cancer_type_by_id(j)}",
+                              test_confusion_matrix[i, j], 0)
 
     writer.close()
     return model, test_acc

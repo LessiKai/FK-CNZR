@@ -2,11 +2,11 @@ defaults:
   - algo: fcnn
   - launcher: local
   - search_space: fcnn
-  - sweeper: dehb
+  - sweeper: only_seed
   - _self_
 
-seed: 42
+seed: ???
 use_loss_weights: true
 test_size: 0.15
 val_size: 0.15
-use_val: true
+use_val: false

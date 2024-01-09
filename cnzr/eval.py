@@ -9,6 +9,8 @@ from tqdm import tqdm
 from typing import Optional
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
+import numpy as np
+from cnzr.data import CANCER_TYPES, get_cancer_type_by_id
 
 
 @dataclass
@@ -17,6 +19,7 @@ class TensorboardData:
     train_acc: pd.DataFrame
     test_acc: pd.DataFrame
     final_train_acc: pd.DataFrame
+    confusion_matrix: np.ndarray
 
 
 def load_tb_file(tb_file: Path) -> TensorboardData:
@@ -48,8 +51,13 @@ def load_tb_file(tb_file: Path) -> TensorboardData:
         "acc": [l.value for l in final_train_acc]
     })
 
+    confusion_matrix = np.zeros((len(CANCER_TYPES), len(CANCER_TYPES)))
+    for i in range(len(CANCER_TYPES)):
+        for j in range(len(CANCER_TYPES)):
+            confusion_matrix[i, j] = acc.Scalars(f"confusion_matrix/{get_cancer_type_by_id(i)}/{get_cancer_type_by_id(j)}")[-1].value
+
     return TensorboardData(train_loss=train_loss, train_acc=train_acc, test_acc=test_acc,
-                           final_train_acc=final_train_acc)
+                           final_train_acc=final_train_acc, confusion_matrix=confusion_matrix)
 
 
 def is_log_dir(d: Path) -> bool:
@@ -142,15 +150,15 @@ class ExperimentResults:
                    x_label, y_label, figsize, title, dst_file, x_lim, y_lim)
 
     def plot_test_acc(self, dst_file: Union[str, PathLike],
-                      x_label: str = "Test Accuracy",
-                      title: str = "Test Accuracy",
+                      x_label: str = "Accuracy",
+                      title: str = "Accuracy",
                       figsize: tuple[int, int] = (16, 9)):
 
         test_data = pd.concat([d.test_acc for d in self.tb_data], ignore_index=True)["acc"]
         final_train_data = pd.concat([d.final_train_acc for d in self.tb_data], ignore_index=True)["acc"]
         data = pd.DataFrame({"acc": [], "type": []})
-        data = pd.concat([data, pd.DataFrame({"acc": test_data, "type": "test"})], ignore_index=True)
-        data = pd.concat([data, pd.DataFrame({"acc": final_train_data, "type": "final_train"})], ignore_index=True)
+        data = pd.concat([data, pd.DataFrame({"acc": test_data, "type": "Test"})], ignore_index=True)
+        data = pd.concat([data, pd.DataFrame({"acc": final_train_data, "type": "Train"})], ignore_index=True)
 
         sns.set_theme(style=self.sns_theme)
         _, ax = plt.subplots(figsize=figsize)
@@ -160,6 +168,27 @@ class ExperimentResults:
         plt.savefig(dst_file)
         plt.close()
 
+    def plot_confusion_matrix(self, dst_file: Union[str, PathLike],
+                              figsize: tuple[int, int] = (16, 9),
+                              title: str = "Confusion Matrix"):
+        combined_confusion_matrix = np.zeros((len(CANCER_TYPES), len(CANCER_TYPES)))
+        for d in self.tb_data:
+            combined_confusion_matrix += d.confusion_matrix
+        combined_confusion_matrix /= len(self.tb_data)
+        # calculate the percentage of correct predictions
+        combined_confusion_matrix = combined_confusion_matrix / combined_confusion_matrix.sum(axis=1)[:, np.newaxis]
+
+        sns.set_theme(style=self.sns_theme)
+        _, ax = plt.subplots(figsize=figsize)
+        sns.heatmap(combined_confusion_matrix, annot=True, ax=ax,
+                    xticklabels=CANCER_TYPES.keys(), yticklabels=CANCER_TYPES.keys())
+        ax.set_title(title)
+        plt.xlabel("Predicted")
+        plt.ylabel("True")
+        plt.savefig(dst_file)
+        plt.close()
+
+
     def plot_all(self, dst_dir: Union[str, PathLike],
                  window_size: int = 50,
                  figsize: tuple[int, int] = (16, 9),
@@ -168,7 +197,7 @@ class ExperimentResults:
         dst_dir = Path(dst_dir) if isinstance(dst_dir, str) else dst_dir
         dst_dir.mkdir(parents=True, exist_ok=True)
 
-        pb = tqdm(total=3, desc="Plotting")
+        pb = tqdm(total=4, desc="Plotting")
         self.plot_train_loss(dst_dir / f"{file_prefix}_train_loss.png",
                              window_size=window_size,
                              figsize=figsize)
@@ -179,5 +208,8 @@ class ExperimentResults:
         pb.update()
         self.plot_test_acc(dst_dir / f"{file_prefix}_test_acc.png",
                            figsize=figsize)
+        pb.update()
+        self.plot_confusion_matrix(dst_dir / f"{file_prefix}_confusion_matrix.png",
+                                   figsize=figsize)
         pb.update()
         pb.close()

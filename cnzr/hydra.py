@@ -23,6 +23,8 @@ def run_experiment(cfg: DictConfig):
         cancer_loss_weights = cancer_loss_weights / np.sum(cancer_loss_weights)
         logging.info(f"Cancer types: {cancer_type}")
         logging.info(f"Cancer counts: {cancer_count}")
+        if not cfg.use_loss_weights:
+            cancer_loss_weights = np.ones_like(cancer_loss_weights)
         logging.info(f"Cancer loss weights: {cancer_loss_weights}")
 
         y = one_hot_encode(y, n_classes=3)

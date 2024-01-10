@@ -191,7 +191,7 @@ class ExperimentResults:
 
     def plot_all(self, dst_dir: Union[str, PathLike],
                  window_size: int = 50,
-                 figsize: tuple[int, int] = (16, 9),
+                 figsize: tuple[int, int] = (9, 6),
                  file_prefix: str = ""):
 
         dst_dir = Path(dst_dir) if isinstance(dst_dir, str) else dst_dir
@@ -204,7 +204,8 @@ class ExperimentResults:
         pb.update()
         self.plot_train_acc(dst_dir / f"{file_prefix}_train_acc.png",
                             window_size=window_size,
-                            figsize=figsize)
+                            figsize=figsize,
+                            y_lim=(0, 1))
         pb.update()
         self.plot_test_acc(dst_dir / f"{file_prefix}_test_acc.png",
                            figsize=figsize)

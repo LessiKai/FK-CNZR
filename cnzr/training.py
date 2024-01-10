@@ -34,6 +34,25 @@ class FCNN(nn.Module):
         x = torch.softmax(x, dim=1)
         return x
 
+class OldModel(nn.Module):
+    def __init__(self, in_features: int, out_features: int):
+        super().__init__()
+
+        self.network = nn.Sequential(
+            nn.Linear(in_features, 128),
+            nn.Tanh(),
+            nn.Linear(128, 64),
+            nn.Tanh(),
+            nn.Linear(64, 32),
+            nn.Tanh(),
+            nn.Linear(32, out_features),
+        )
+
+    def forward(self, x):
+        x = self.network(x)
+        x = torch.softmax(x, dim=1).to(torch.float)
+        return x
+
 
 def calculate_accuracy(model: nn.Module, x: torch.Tensor, y: torch.Tensor, batch_size: int) -> (float, np.ndarray):
     model.eval()

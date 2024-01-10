@@ -3,7 +3,7 @@ from cnzr.data import load_data, one_hot_encode
 import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
-from cnzr.training import train_model, FCNN
+from cnzr.training import train_model, FCNN, OldModel
 from pathlib import Path
 import hydra
 import logging
@@ -50,19 +50,21 @@ def run_experiment(cfg: DictConfig):
         raise e
 
     if cfg.algo.name == "fcnn":
-        try:
-            model = FCNN(in_features=x.shape[1], out_features=y.shape[1], hidden_size=cfg.algo.hidden_size,
-                         num_hidden=cfg.algo.num_hidden, dropout=cfg.algo.dropout)
-
-            val_or_test_x, val_or_test_y = (x_val, y_val) if cfg.use_val else (x_test, y_test)
-            model, acc = train_model(x_train, y_train, val_or_test_x, val_or_test_y, model,
-                                     cancer_loss_weights,
-                                     cfg.algo.epochs, cfg.algo.batch_size,
-                                     cfg.algo.learning_rate, seed, log_dir)
-            logging.info(f"Accuracy: {acc}")
-        except Exception as e:
-            logging.error(e)
-            raise e
-        return -acc
+        model = FCNN(in_features=x.shape[1], out_features=y.shape[1], hidden_size=cfg.algo.hidden_size,
+                     num_hidden=cfg.algo.num_hidden, dropout=cfg.algo.dropout)
+    elif cfg.algo.name == "old":
+        model = OldModel(in_features=x.shape[1], out_features=y.shape[1])
     else:
         raise ValueError(f"Algorithm {cfg.algo.name} not supported")
+
+    try:
+        val_or_test_x, val_or_test_y = (x_val, y_val) if cfg.use_val else (x_test, y_test)
+        model, acc = train_model(x_train, y_train, val_or_test_x, val_or_test_y, model,
+                                 cancer_loss_weights,
+                                 cfg.algo.epochs, cfg.algo.batch_size,
+                                 cfg.algo.learning_rate, seed, log_dir)
+        logging.info(f"Accuracy: {acc}")
+    except Exception as e:
+        logging.error(e)
+        raise e
+    return -acc

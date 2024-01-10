@@ -1,0 +1,11 @@
+defaults:
+  - algo: old
+  - launcher: local
+  - sweeper: only_seed
+  - _self_
+
+seed: ???
+use_loss_weights: false
+test_size: 0.15
+val_size: 0.15
+use_val: false
